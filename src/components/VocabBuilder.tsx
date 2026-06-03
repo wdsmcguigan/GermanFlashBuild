@@ -1,18 +1,19 @@
 import React, { useState, useRef } from "react";
 import { VocabWord } from "../types";
-import { Loader2, Plus, Trash2, Languages, BookOpen, Download, Upload, Camera, Check, CheckSquare, Square, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Languages, BookOpen, Download, Upload, Camera, Check, CheckSquare, Square, X, Search, AlertTriangle, Info } from "lucide-react";
 
 interface VocabBuilderProps {
   words: VocabWord[];
   loading: boolean;
   onAddWords: (words: string[]) => void;
   onRemoveWord: (id: string) => void;
+  onClearAllWords?: () => void;
   onImportWords: (words: Partial<VocabWord>[]) => void;
   onAddPreTranslatedWords: (words: { 
     german: string; 
     english: string; 
     examples?: string[];
-    wordType?: "noun" | "verb" | "other"; 
+    wordType?: string;
     plural?: string;
     present?: string;
     preterite?: string;
@@ -21,17 +22,145 @@ interface VocabBuilderProps {
   }[]) => void;
 }
 
-export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onImportWords, onAddPreTranslatedWords }: VocabBuilderProps) {
+function getCategoryBadgeStyles(wordType?: string) {
+  const type = (wordType || "other").trim().toLowerCase();
+  
+  switch (type) {
+    case "noun":
+      return {
+        bg: "bg-[#FFF0F4]",
+        text: "text-[#C0567A]",
+        border: "border-[#FFE5EC]",
+        label: "Noun"
+      };
+    case "verb":
+      return {
+        bg: "bg-[#F0F5F1]",
+        text: "text-[#4F7E65]",
+        border: "border-[#E1EDE6]",
+        label: "Verb"
+      };
+    case "adjective":
+      return {
+        bg: "bg-[#F0F7FA]",
+        text: "text-[#3D7A94]",
+        border: "border-[#E1EFF5]",
+        label: "Adjective"
+      };
+    case "adverb":
+      return {
+        bg: "bg-[#F5F2FA]",
+        text: "text-[#6A4E9E]",
+        border: "border-[#EAE1F5]",
+        label: "Adverb"
+      };
+    case "conjunction":
+      return {
+        bg: "bg-[#FCF8E3]",
+        text: "text-[#A67C1E]",
+        border: "border-[#FAF2CC]",
+        label: "Conjunction"
+      };
+    case "preposition":
+      return {
+        bg: "bg-[#FAF0E6]",
+        text: "text-[#9E6A4E]",
+        border: "border-[#F5E2D1]",
+        label: "Preposition"
+      };
+    case "pronoun":
+      return {
+        bg: "bg-[#F0F0FF]",
+        text: "text-[#5C5C9E]",
+        border: "border-[#E2E2FF]",
+        label: "Pronoun"
+      };
+    case "phrase":
+      return {
+        bg: "bg-[#F4F4F0]",
+        text: "text-[#6E6E60]",
+        border: "border-[#E9E9E0]",
+        label: "Phrase"
+      };
+    default:
+      const label = wordType ? wordType.charAt(0).toUpperCase() + wordType.slice(1) : "Other";
+      return {
+        bg: "bg-[#F5F5F0]",
+        text: "text-[#8E8E80]",
+        border: "border-[#E0E0D5]",
+        label: label
+      };
+  }
+}
+
+function getNormalizedGerman(wordStr: any): string {
+  if (!wordStr || typeof wordStr !== "string") return "";
+  let norm = wordStr.trim().toLowerCase();
+  
+  // Strip common indicators of nouns
+  if (norm.startsWith("der ")) norm = norm.slice(4).trim();
+  else if (norm.startsWith("die ")) norm = norm.slice(4).trim();
+  else if (norm.startsWith("das ")) norm = norm.slice(4).trim();
+  
+  // Strip plural endings if written like "Zahl, -en" or "Tisch, -e"
+  const commaIndex = norm.indexOf(",");
+  if (commaIndex !== -1) {
+    norm = norm.substring(0, commaIndex).trim();
+  }
+  return norm;
+}
+
+function getGermanFromImportItem(item: any): string {
+  if (typeof item === "string") {
+    return item;
+  }
+  if (item && typeof item === "object") {
+    const val = item.german || item.word || item.vocab || item.text || "";
+    return typeof val === "string" ? val : String(val);
+  }
+  return "";
+}
+
+export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClearAllWords, onImportWords, onAddPreTranslatedWords }: VocabBuilderProps) {
   const [inputText, setInputText] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [errorDetails, setErrorDetails] = useState<{
+    title: string;
+    message: string;
+    category?: string;
+    technicalDetails?: string;
+  } | null>(null);
+  const [showTechDetails, setShowTechDetails] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  const filteredWords = words.filter(w => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
+    
+    return (
+      w.german?.toLowerCase().includes(query) ||
+      w.english?.toLowerCase().includes(query) ||
+      w.wordType?.toLowerCase().includes(query) ||
+      w.plural?.toLowerCase().includes(query) ||
+      w.present?.toLowerCase().includes(query) ||
+      w.preterite?.toLowerCase().includes(query) ||
+      w.perfect?.toLowerCase().includes(query) ||
+      w.verbClass?.toLowerCase().includes(query)
+    );
+  });
+
   const [extracting, setExtracting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{current: number, total: number} | null>(null);
+  const [isImportCancelling, setIsImportCancelling] = useState(false);
+  const importCancelledRef = useRef(false);
+  const [showTrashBin, setShowTrashBin] = useState(false);
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
   const [extractedWords, setExtractedWords] = useState<{
     german: string;
     english: string;
     examples?: string[];
-    wordType?: "noun" | "verb" | "other";
+    wordType?: string;
     plural?: string;
     present?: string;
     preterite?: string;
@@ -58,33 +187,138 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onImpor
     if (!file) return;
 
     setExtracting(true);
+    setShowTechDetails(false);
+    setErrorDetails(null);
+
     try {
       const mimeType = file.type;
       const base64 = await convertToBase64(file);
 
-      const response = await fetch("/api/extract-vocab", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64, mimeType }),
-      });
+      // Simple client-side size check (25MB soft warning limit)
+      if (file.size > 25 * 1024 * 1024) {
+        setErrorDetails({
+          title: "File Too Large",
+          message: "The uploaded image file is larger than 25MB. Please use a smaller or compressed image to prevent processing limits.",
+          category: "payload_size",
+          technicalDetails: `Local file size detection: ${(file.size / (1024 * 1024)).toFixed(2)}MB`
+        });
+        setExtracting(false);
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 sec timeout
+
+      let response;
+      try {
+        response = await fetch("/api/extract-vocab", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: base64, mimeType }),
+          signal: controller.signal
+        });
+      } catch (fetchErr: any) {
+        if (fetchErr.name === "AbortError") {
+          throw {
+            category: "network",
+            message: "The scanning request timed out after 90 seconds. Your upload or connection might be slow.",
+            details: "Client Timeout (AbortError)"
+          };
+        } else {
+          throw {
+            category: "network",
+            message: "A network connectivity error occurred. Please verify your internet connection.",
+            details: fetchErr.message || String(fetchErr)
+          };
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
-        throw new Error("Extraction failed");
+        let errorData: any = {};
+        try {
+          errorData = await response.json();
+        } catch (_) {}
+        throw {
+          status: response.status,
+          message: errorData.error || "The server encountered an issue processing the image.",
+          details: errorData.details || `HTTP Status: ${response.status}`,
+          category: errorData.category || "unknown"
+        };
       }
 
       const data = await response.json();
       if (data.words && Array.isArray(data.words)) {
-        const wordsWithSelection = data.words.map((w: any) => ({
-          ...w,
-          selected: true,
-        }));
-        setExtractedWords(wordsWithSelection);
+        if (data.words.length === 0) {
+          setErrorDetails({
+            title: "No German Words Detected",
+            message: "Gemini analyzed the image, but couldn't detect any structured German vocabulary words. Please verify that text is clear, non-blurry, and clearly written in German.",
+            category: "parse"
+          });
+        } else {
+          const wordsWithSelection = data.words.map((w: any) => ({
+            ...w,
+            selected: true,
+          }));
+          setExtractedWords(wordsWithSelection);
+        }
       } else {
-        alert("Gemini couldn't find any German words in this image. Try another photo.");
+        setErrorDetails({
+          title: "Invalid Response Format",
+          message: "The translation engine responded, but the output structure was unexpected.",
+          category: "parse",
+          technicalDetails: JSON.stringify(data)
+        });
       }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to analyze image. Please try again.");
+    } catch (err: any) {
+      console.error("Scanning Error Handled:", err);
+      
+      let title = "Failed to Analyze Image";
+      let message = "An issue occurred while attempting to process your image scan.";
+      let category = err.category || "unknown";
+      let details = err.details || err.message || String(err);
+
+      if (category === "unknown") {
+        const lowerDetails = details.toLowerCase();
+        if (lowerDetails.includes("api_key") || lowerDetails.includes("api key") || lowerDetails.includes("unauthorized") || lowerDetails.includes("api key not found")) {
+          category = "api_key";
+          title = "API Key Configuration Required";
+          message = "The Google Gemini API Key is missing or invalid. Please configure your GEMINI_API_KEY environment variable in your project settings.";
+        } else if (lowerDetails.includes("network") || lowerDetails.includes("fetch") || lowerDetails.includes("failed to fetch") || lowerDetails.includes("internet")) {
+          category = "network";
+          title = "Network Connection Issue";
+          message = "Could not establish a network connection. Please check your Wi-Fi or cellular data connection.";
+        } else if (lowerDetails.includes("rate") || lowerDetails.includes("quota") || lowerDetails.includes("limit") || lowerDetails.includes("429") || err.status === 429) {
+          category = "quota";
+          title = "API Frequency Quota Limit";
+          message = "The application has reached Gemini API rate frequency thresholds. Please wait a minute and re-submit your photo.";
+        } else if (lowerDetails.includes("too large") || lowerDetails.includes("file size") || lowerDetails.includes("image size") || lowerDetails.includes("413") || err.status === 413) {
+          category = "payload_size";
+          title = "Image Payload Size Limit";
+          message = "The uploaded file is too large for the processing container limits. Try choosing an image with lower resolution or smaller size.";
+        } else if (lowerDetails.includes("safety") || lowerDetails.includes("blocked") || lowerDetails.includes("candidate")) {
+          category = "safety";
+          title = "Safety Filter Intercepted";
+          message = "The request was blocked by Gemini's AI safety rules. This sometimes triggers on handwritten notes or tables containing words that look like sensitive content.";
+        }
+      } else {
+        // Map backend preset strings cleanly
+        message = err.message;
+        if (category === "api_key") title = "API Key Error";
+        else if (category === "payload_size") title = "Payload Size Limit";
+        else if (category === "network") title = "Network Failure";
+        else if (category === "safety") title = "Safety Intercept";
+        else if (category === "parse") title = "Parsing Response Error";
+        else if (category === "quota") title = "Gemini Quota Reached";
+      }
+
+      setErrorDetails({
+        title,
+        message,
+        category,
+        technicalDetails: details
+      });
     } finally {
       setExtracting(false);
       if (cameraInputRef.current) {
@@ -118,16 +352,222 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onImpor
     URL.revokeObjectURL(url);
   };
 
+  const processExternalImport = async (wordsToImport: any[]) => {
+    importCancelledRef.current = false;
+    setIsImportCancelling(false);
+    setImportProgress({ current: 0, total: wordsToImport.length });
+    setErrorDetails(null);
+    let importedCount = 0;
+    
+    // Using a safe, highly-stable chunk size (12 instead of 40)
+    // to prevent response truncation or backend timeout on large tasks.
+    const chunkSize = 12;
+    
+    for (let i = 0; i < wordsToImport.length; i += chunkSize) {
+      if (importCancelledRef.current) {
+        break;
+      }
+      
+      const chunk = wordsToImport.slice(i, i + chunkSize);
+      try {
+        const response = await fetch("/api/enrich-vocab", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ words: chunk }),
+        });
+        
+        if (!response.ok) {
+           let errorData: any = {};
+           try {
+             errorData = await response.json();
+           } catch (_) {}
+           throw {
+             category: errorData.category || "unknown",
+             message: errorData.error || "Failed to process import chunk.",
+             details: errorData.details || `HTTP Status: ${response.status}`
+           };
+        }
+        
+        const data = await response.json();
+        
+        if (importCancelledRef.current) {
+          break;
+        }
+
+        if (data.enrichedWords && Array.isArray(data.enrichedWords)) {
+          onImportWords(data.enrichedWords);
+        }
+      } catch (err: any) {
+        console.error("Import Error Handled:", err);
+        
+        let title = "Import Interrupted";
+        let message = "An issue occurred while attempting to process and enrich your imported words.";
+        let category = err.category || "unknown";
+        let details = err.details || err.message || String(err);
+
+        if (category === "unknown") {
+          const lowerDetails = details.toLowerCase();
+          if (lowerDetails.includes("api_key") || lowerDetails.includes("api key") || lowerDetails.includes("unauthorized") || lowerDetails.includes("api key not found")) {
+            category = "api_key";
+            title = "API Key Configuration Required";
+            message = "The Google Gemini API Key is missing or invalid. Please configure your GEMINI_API_KEY environment variable in your project settings.";
+          } else if (lowerDetails.includes("network") || lowerDetails.includes("fetch") || lowerDetails.includes("failed to fetch") || lowerDetails.includes("internet")) {
+            category = "network";
+            title = "Network Connection Issue";
+            message = "Could not establish a network connection. Please check your Wi-Fi or cellular data connection.";
+          } else if (lowerDetails.includes("rate") || lowerDetails.includes("quota") || lowerDetails.includes("limit") || lowerDetails.includes("429")) {
+            category = "quota";
+            title = "API Frequency Quota Limit";
+            message = "The application has reached Gemini API rate frequency thresholds. Please wait a minute and try the import again.";
+          } else if (lowerDetails.includes("format") || lowerDetails.includes("formatted") || lowerDetails.includes("syntaxerror") || lowerDetails.includes("json") || lowerDetails.includes("incorrectly")) {
+            category = "parse";
+            title = "Enrichment Response Error";
+            message = "The translation engine responded, but the output structure was formatted incorrectly or truncated.";
+          }
+        } else {
+          message = err.message;
+          if (category === "api_key") title = "API Key Error";
+          else if (category === "network") title = "Network Failure";
+          else if (category === "safety") title = "Safety Intercept";
+          else if (category === "parse") title = "Parsing Response Error";
+          else if (category === "quota") title = "Gemini Quota Reached";
+        }
+
+        setErrorDetails({
+          title,
+          message,
+          category,
+          technicalDetails: details
+        });
+        break;
+      }
+      
+      importedCount += chunk.length;
+      setImportProgress({ current: Math.min(importedCount, wordsToImport.length), total: wordsToImport.length });
+    }
+    
+    setImportProgress(null);
+    setIsImportCancelling(false);
+  };
+
   const handleImportChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target?.result as string);
-        onImportWords(parsed);
-      } catch (err) {
-        alert("Failed to parse the JSON file. Ensure it is a valid backup.");
+        const resultText = event.target?.result as string;
+        if (!resultText) {
+          throw new Error("The selected file is empty.");
+        }
+        
+        const parsed = JSON.parse(resultText);
+        
+        let rawItems: any[] = [];
+        if (parsed && typeof parsed === "object") {
+          if (parsed.words && Array.isArray(parsed.words)) {
+            rawItems = parsed.words;
+          } else if (Array.isArray(parsed)) {
+            rawItems = parsed;
+          }
+        }
+        
+        if (!Array.isArray(rawItems) || rawItems.length === 0) {
+          alert("No words found to import.");
+          return;
+        }
+
+        const existingNormalized = new Set(
+          (Array.isArray(words) ? words : [])
+            .filter((w: any) => w && typeof w.german === "string")
+            .map((w: any) => getNormalizedGerman(w.german))
+        );
+
+        const filteredItems = rawItems.filter((w: any) => {
+          const germanWord = getGermanFromImportItem(w);
+          const normalized = getNormalizedGerman(germanWord);
+          return normalized && !existingNormalized.has(normalized);
+        });
+
+        const skippedCount = rawItems.length - filteredItems.length;
+
+        if (filteredItems.length === 0) {
+          alert(`Smart-Resume: All ${rawItems.length} word(s) inside this file already exist in your vocabulary. Perfect!`);
+          return;
+        }
+
+        if (skippedCount > 0) {
+          alert(`Smart-Resume: Detected ${skippedCount} word(s) from this file that are already in your vocabulary list. Skipping them and processing the remaining ${filteredItems.length} new or remaining word(s)...`);
+        }
+
+        // Internal Format check: Should have 'german' and 'english' properties on objects.
+        const isInternalFormat = filteredItems[0] && typeof filteredItems[0] === "object" && filteredItems[0].german && filteredItems[0].english;
+
+        if (isInternalFormat) {
+          const incompleteWords: any[] = [];
+          const completeWords: any[] = [];
+
+          filteredItems.forEach((w: any) => {
+            if (!w || typeof w !== "object") return;
+            const hasGerman = typeof w.german === "string" && !!w.german;
+            const hasEnglish = typeof w.english === "string" && !!w.english;
+            if (!hasGerman || !hasEnglish) return;
+
+            const type = typeof w.wordType === "string" ? w.wordType.trim().toLowerCase() : "";
+            const isVerb = type === "verb" || (!type && w.german && /^[a-zäöü]+e[nr]l?$/i.test(w.german.trim()));
+
+            if (isVerb) {
+              const hasPerfect = typeof w.perfect === "string" && w.perfect.trim() !== "" && w.perfect.trim() !== "—" && w.perfect.trim() !== "-";
+              const lowercasePerfect = hasPerfect && typeof w.perfect === "string" ? w.perfect.toLowerCase().trim() : "";
+              const hasHelper = hasPerfect && (
+                lowercasePerfect.startsWith("hat ") || 
+                lowercasePerfect.startsWith("ist ") || 
+                lowercasePerfect.startsWith("haben ") || 
+                lowercasePerfect.startsWith("sein ") ||
+                lowercasePerfect.includes(" hat ") ||
+                lowercasePerfect.includes(" ist ")
+              );
+              const hasPresent = typeof w.present === "string" && w.present.trim() !== "" && w.present.trim() !== "—" && w.present.trim() !== "-";
+              const hasPreterite = typeof w.preterite === "string" && w.preterite.trim() !== "" && w.preterite.trim() !== "—" && w.preterite.trim() !== "-";
+
+              if (!hasPerfect || !hasHelper || !hasPresent || !hasPreterite) {
+                incompleteWords.push(w);
+              } else {
+                completeWords.push(w);
+              }
+            } else if (type === "noun") {
+              const hasPlural = typeof w.plural === "string" && w.plural.trim() !== "" && w.plural.trim() !== "—" && w.plural.trim() !== "-";
+              const hasArticle = w.german && (
+                w.german.toLowerCase().startsWith("der ") || 
+                w.german.toLowerCase().startsWith("die ") || 
+                w.german.toLowerCase().startsWith("das ")
+              );
+              if (!hasPlural || !hasArticle) {
+                incompleteWords.push(w);
+              } else {
+                completeWords.push(w);
+              }
+            } else {
+              completeWords.push(w);
+            }
+          });
+
+          if (incompleteWords.length > 0) {
+            if (completeWords.length > 0) {
+              onImportWords(completeWords);
+            }
+            alert(`Detected ${incompleteWords.length} imported word(s) with incomplete grammatical metadata (such as verbs missing Perfekt tenses/helper verbs or nouns missing plurals). Running AI enrichment to complete them automatically...`);
+            processExternalImport(incompleteWords);
+          } else {
+            onImportWords(filteredItems);
+          }
+          return;
+        }
+
+        processExternalImport(filteredItems);
+      } catch (err: any) {
+        console.error("FileReader onload error details:", err);
+        alert(`Failed to parse the JSON file: ${err.message || String(err)}`);
       }
     };
     reader.readAsText(file);
@@ -231,11 +671,64 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onImpor
             >
               <Download className="w-4 h-4 lg:w-5 lg:h-5" />
             </button>
-            <span className="ml-1 text-[10px] font-mono bg-[#F5F5F0] text-[#8E8E80] px-2 py-1 rounded border border-[#E0E0D5]">
-              {words.length}
-            </span>
+            {!showTrashBin ? (
+              <button 
+                onClick={() => {
+                  if (words.length > 0) {
+                    setShowTrashBin(true);
+                  }
+                }}
+                disabled={words.length === 0}
+                title="Select all to clear"
+                className="ml-1 text-[11px] font-bold font-mono bg-[#F5F5F0] text-[#8E8E80] px-3 py-1 rounded hover:border-red-300 hover:text-red-500 hover:bg-[#FFF0F0] active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-[#E0E0D5]"
+              >
+                {words.length}
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 ml-1 animate-fade-in">
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirmModal(true)}
+                  title="Clear all words"
+                  className="p-1.5 text-red-500 bg-[#FFF0F4] hover:bg-[#FFE2E7] transition-colors border border-[#FFD2DB] rounded-lg flex items-center justify-center cursor-pointer active:scale-95 shadow-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTrashBin(false)}
+                  title="Keep words"
+                  className="p-1 px-[7px] text-[10px] uppercase tracking-widest font-mono font-bold text-[#8E8E80] hover:text-[#5A5A40] transition-colors rounded-lg bg-[#F5F5F0] border border-[#E0E0D5] cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Search Input Bar */}
+        {words.length > 0 && (
+          <div className="px-4 py-2 lg:px-6 lg:py-3 bg-[#FDFDFB] border-b border-[#F5F5F0] flex items-center gap-2">
+            <Search className="w-4 h-4 text-[#8E8E80] shrink-0" />
+            <input
+              type="text"
+              placeholder="Search words by German, English, category..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-transparent border-none outline-none text-xs lg:text-sm text-[#2A2A20] placeholder:text-[#8E8E80]/50"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="p-1 hover:bg-[#F5F5F0] rounded text-[#8E8E80] cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto px-2 py-4 space-y-1 custom-scrollbar">
           {words.length === 0 ? (
@@ -243,33 +736,48 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onImpor
               <BookOpen className="w-8 h-8 mb-3 opacity-20" />
               <p className="text-sm font-serif italic" style={{ fontFamily: "'Georgia', serif" }}>No vocabulary added yet.</p>
             </div>
+          ) : filteredWords.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-[#E0E0D5] py-8">
+              <Search className="w-8 h-8 mb-2 opacity-20" />
+              <p className="text-sm font-serif italic" style={{ fontFamily: "'Georgia', serif" }}>No matching words found.</p>
+            </div>
           ) : (
             <div className="space-y-1">
-              {words.map(w => (
-                <div key={w.id} className="flex items-center px-4 py-3 lg:px-6 lg:py-4 hover:bg-[#F9F9F4] rounded-xl lg:rounded-2xl transition-colors group animate-fade-in">
-                  <div className="flex flex-col min-w-0 pr-2">
-                    <span className="text-base lg:text-lg font-serif text-[#2A2A20]" style={{ fontFamily: "'Georgia', serif" }}>
-                      {w.wordType === "noun" && w.plural && !w.plural.toLowerCase().includes("no plural")
-                        ? `${w.german}, ${w.plural}`
-                        : w.german}
-                    </span>
-                    {w.wordType === "verb" && (w.present || w.preterite || w.perfect) && (
-                      <span className="text-[10px] text-[#8E8E80] font-mono mt-0.5 truncate">
-                        {w.present || "—"} • {w.preterite || "—"} • {w.perfect || "—"} <span className="text-[9px] uppercase tracking-wider bg-[#5A5A40]/10 px-1.5 py-0.2 rounded font-bold text-[#5A5A40] ml-1">{w.verbClass || "verb"}</span>
-                      </span>
-                    )}
+              {filteredWords.map(w => {
+                const badge = getCategoryBadgeStyles(w.wordType);
+                return (
+                  <div key={w.id} className="flex items-center px-4 py-3 lg:px-6 lg:py-4 hover:bg-[#F9F9F4] rounded-xl lg:rounded-2xl transition-colors group animate-fade-in">
+                    <div className="flex flex-col min-w-0 pr-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base lg:text-lg font-serif text-[#2A2A20]" style={{ fontFamily: "'Georgia', serif" }}>
+                          {w.wordType === "noun" && w.plural && !w.plural.toLowerCase().includes("no plural")
+                            ? `${w.german}, ${w.plural}`
+                            : w.german}
+                        </span>
+                        {w.wordType && (
+                          <span className={`text-[8px] uppercase tracking-wider px-1 py-0.5 rounded font-bold border ${badge.bg} ${badge.text} ${badge.border}`}>
+                            {badge.label}
+                          </span>
+                        )}
+                      </div>
+                      {w.wordType === "verb" && (w.present || w.preterite || w.perfect) && (
+                        <span className="text-[10px] text-[#8E8E80] font-mono mt-0.5 truncate">
+                          {w.present || "—"} • {w.preterite || "—"} • {w.perfect || "—"} <span className="text-[8px] uppercase tracking-wider bg-[#5A5A40]/10 px-1 py-0.5 rounded font-bold text-[#5A5A40] ml-1">{w.verbClass || "verb"}</span>
+                        </span>
+                      )}
+                    </div>
+                    <div className="ml-auto flex items-center gap-3 lg:gap-4 shrink-0">
+                      <span className="text-[10px] text-[#8E8E80] opacity-80 uppercase font-medium max-w-[120px] truncate">{w.english}</span>
+                      <button
+                        onClick={() => onRemoveWord(w.id)}
+                        className="text-[#8E8E80] opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity hover:text-[#5A5A40]"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="ml-auto flex items-center gap-3 lg:gap-4 shrink-0">
-                    <span className="text-[10px] text-[#8E8E80] opacity-80 uppercase font-medium max-w-[120px] truncate">{w.english}</span>
-                    <button
-                      onClick={() => onRemoveWord(w.id)}
-                      className="text-[#8E8E80] opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity hover:text-[#5A5A40]"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -348,9 +856,16 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onImpor
                   </div>
                   <div className="flex-1 min-w-0 font-serif">
                     <div className="flex justify-between items-baseline gap-2">
-                      <span className="text-base lg:text-lg text-[#2A2A20] font-medium" style={{ fontFamily: "'Georgia', serif" }}>
-                        {word.german}
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base lg:text-lg text-[#2A2A20] font-medium" style={{ fontFamily: "'Georgia', serif" }}>
+                          {word.german}
+                        </span>
+                        {word.wordType && (
+                          <span className={`text-[8px] uppercase tracking-wider px-1 py-0.5 rounded font-bold border ${getCategoryBadgeStyles(word.wordType).bg} ${getCategoryBadgeStyles(word.wordType).text} ${getCategoryBadgeStyles(word.wordType).border}`}>
+                            {getCategoryBadgeStyles(word.wordType).label}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-[#8E8E80] font-mono font-medium max-w-[150px] truncate text-right">
                         {word.english}
                       </span>
@@ -402,6 +917,215 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onImpor
               >
                 <Check className="w-4 h-4" />
                 Add Selected ({extractedWords.filter(w => w.selected).length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear List Confirmation Modal (Safety Modal) */}
+      {showClearConfirmModal && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-[#4A4A40]/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-white rounded-2xl lg:rounded-[28px] border border-[#E0E0D5] shadow-2xl p-6 flex flex-col items-center">
+            <div className="p-3 bg-red-50 text-red-500 rounded-full mb-4 border border-red-100 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            
+            <h3 className="text-sm font-bold uppercase tracking-widest font-mono text-[#2A2A20] mb-2 text-center">
+              Danger Zone
+            </h3>
+            
+            <p className="text-xs text-[#8E8E80] text-center mb-6 leading-relaxed">
+              This will permanently delete all <strong className="text-red-500 font-bold">{words.length} words</strong> from your deck. This process cannot be undone. Are you sure?
+            </p>
+
+            <div className="flex items-center gap-3 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowClearConfirmModal(false);
+                  setShowTrashBin(false);
+                }}
+                className="flex-1 py-2.5 rounded-full border border-[#E0E0D5] hover:bg-[#F5F5F0] transition-colors text-xs font-bold uppercase tracking-wider font-mono text-[#8E8E80] text-center cursor-pointer"
+              >
+                No, Keep
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClearAllWords?.();
+                  setShowClearConfirmModal(false);
+                  setShowTrashBin(false);
+                }}
+                className="flex-1 py-2.5 rounded-full bg-red-500 hover:bg-red-600 transition-colors text-xs font-bold uppercase tracking-wider font-mono text-white text-center cursor-pointer shadow-md shadow-red-500/10"
+              >
+                Yes, Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Progress Modal */}
+      {importProgress && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#4A4A40]/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-white rounded-2xl lg:rounded-[28px] border border-[#E0E0D5] shadow-2xl overflow-hidden p-6 flex flex-col items-center">
+            <Loader2 className="w-8 h-8 text-[#5A5A40] animate-spin mb-4" />
+            <h3 className="text-sm font-bold uppercase tracking-widest font-mono text-[#2A2A20] mb-2 text-center">
+              Processing External Word List
+            </h3>
+            <p className="text-xs text-[#8E8E80] text-center mb-4">
+              {isImportCancelling ? "Cancelling at next batch..." : "Analyzing metadata and enriching translations..."}
+            </p>
+            <div className="w-full bg-[#F5F5F0] rounded-full h-2 mb-2 overflow-hidden">
+              <div 
+                className="bg-[#5A5A40] h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+              ></div>
+            </div>
+            <p className="text-[10px] font-mono font-bold text-[#8E8E80] uppercase tracking-widest mb-6">
+              {importProgress.current} / {importProgress.total} Words
+            </p>
+            
+            <button
+              onClick={() => {
+                setIsImportCancelling(true);
+                importCancelledRef.current = true;
+              }}
+              disabled={isImportCancelling}
+              className={`w-full py-2.5 rounded-full text-xs font-bold uppercase tracking-wider font-mono border transition-colors ${
+                isImportCancelling 
+                  ? "bg-[#F5F5F0] text-[#8E8E80] border-[#E0E0D5] cursor-not-allowed" 
+                  : "bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+              }`}
+            >
+              {isImportCancelling ? "Cancelling..." : "Cancel Import"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Details Modal */}
+      {errorDetails && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#4A4A40]/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-2xl lg:rounded-[28px] border border-[#E0E0D5] shadow-2xl overflow-hidden flex flex-col">
+            {/* Header with Categorized Colors */}
+            <div className={`px-6 py-4 flex items-center gap-3 border-b border-[#F5F5F0] ${
+              errorDetails.category === "api_key" ? "bg-amber-50 text-amber-800" :
+              errorDetails.category === "payload_size" ? "bg-orange-50 text-orange-800" :
+              errorDetails.category === "network" ? "bg-red-50 text-red-800" :
+              errorDetails.category === "safety" ? "bg-rose-50 text-rose-800" :
+              errorDetails.category === "quota" ? "bg-blue-50 text-blue-800" :
+              "bg-neutral-50 text-neutral-800"
+            }`}>
+              <div className="p-2 bg-white/80 rounded-lg shrink-0 shadow-sm border border-current/10">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-widest font-mono">
+                  {errorDetails.title}
+                </h3>
+                <p className="text-[10px] opacity-85 uppercase tracking-wider mt-0.5">
+                  Category: {errorDetails.category || "unknown"}
+                </p>
+              </div>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-[#4A4A40] leading-relaxed font-serif">
+                {errorDetails.message}
+              </p>
+
+              {/* Specific helpful instructions based on category */}
+              <div className="bg-[#F9F9F4] rounded-xl p-4 border border-[#E0E0D5]/50 space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#5A5A40] flex items-center gap-1.5 font-sans">
+                  <Info className="w-3.5 h-3.5 text-[#5A5A40]" />
+                  How to Fix / Troubleshoot:
+                </h4>
+                <ul className="text-xs text-[#8E8E80] space-y-1.5 list-disc pl-4 leading-relaxed font-sans">
+                  {errorDetails.category === "api_key" && (
+                    <>
+                      <li>Check if <code className="bg-neutral-150 px-1 py-0.5 rounded text-neutral-700">GEMINI_API_KEY</code> is correctly specified in your environment settings.</li>
+                      <li>Ensure that there are no blank spaces or quote marks around the key.</li>
+                      <li>In AI Studio build, you can set keys in the Settings menu.</li>
+                    </>
+                  )}
+                  {errorDetails.category === "payload_size" && (
+                    <>
+                      <li>The raw image data is too large to process.</li>
+                      <li>Try uploading a standard low-resolution JPEG instead of a high-resolution PNG, or compress it first.</li>
+                      <li>Avoid uploading extremely large high-megapixel photos directly.</li>
+                    </>
+                  )}
+                  {errorDetails.category === "network" && (
+                    <>
+                      <li>Ensure your mobile phone or laptop has an active internet connection (check Wi-Fi / cellular signal).</li>
+                      <li>The request may have aborted due to a slow link. Please retry the scan when your bandwidth is stable.</li>
+                    </>
+                  )}
+                  {errorDetails.category === "safety" && (
+                    <>
+                      <li>Gemini API safety filters check content for potentially sensitive material.</li>
+                      <li>Ensure the image only contains linguistic German training terms, without political, aggressive, or medical illustrations.</li>
+                    </>
+                  )}
+                  {errorDetails.category === "quota" && (
+                    <>
+                      <li>Gemini's daily or minute-ly frequency bounds have been exceeded.</li>
+                      <li>Please wait 30–60 seconds, then tap "Photo Scan" again.</li>
+                    </>
+                  )}
+                  {errorDetails.category === "parse" && (
+                    <>
+                      <li>For file imports: The translation engine response may have been truncated or corrupted due to massive batch sizes. We have reduced the batch chunk size to prevent this. Ensure your JSON file is intact and not corrupted.</li>
+                      <li>For image scans: Ensure the photo has clear lighting, is centered, and the vocabulary text runs in clear, readable columns.</li>
+                      <li>If handwriting or text is highly cursive or blurry, rewrite or retype a smaller list of terms and scan again.</li>
+                    </>
+                  )}
+                  {(!errorDetails.category || errorDetails.category === "unknown") && (
+                    <>
+                      <li>Verify your internet connection remains active and stable.</li>
+                      <li>For imports: If you are importing a massive dataset, try splitting the file or resuming the import.</li>
+                      <li>For image scans: Try taking a closer, cropped photo focusing only on specific words rather than an entire page.</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+
+              {/* Technical Details Collapsible */}
+              {errorDetails.technicalDetails && (
+                <div className="border border-[#E0E0D5] rounded-xl overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setShowTechDetails(!showTechDetails)}
+                    className="w-full px-4 py-2 text-left bg-neutral-50 hover:bg-neutral-100 transition-colors flex justify-between items-center text-xs font-semibold uppercase tracking-wider text-[#8E8E80] cursor-pointer"
+                  >
+                    <span>Technical Log Information</span>
+                    <span className="text-[10px] font-mono">{showTechDetails ? "Hide [-]" : "Show [+]"}</span>
+                  </button>
+                  {showTechDetails && (
+                    <div className="p-3 bg-neutral-900 border-t border-[#E0E0D5] overflow-x-auto max-h-[120px] custom-scrollbar">
+                      <pre className="text-[9px] font-mono text-neutral-300 whitespace-pre-wrap leading-normal break-all">
+                        {errorDetails.technicalDetails}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-[#F9F9F4] border-t border-[#F5F5F0] flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorDetails(null);
+                  setShowTechDetails(false);
+                }}
+                className="px-6 py-2 bg-[#5A5A40] hover:bg-[#4A4A30] text-white rounded-full text-xs font-bold uppercase tracking-widest transition-all cursor-pointer shadow-sm hover:translate-y-[-1px]"
+              >
+                Close
               </button>
             </div>
           </div>

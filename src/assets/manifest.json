@@ -1,0 +1,22 @@
+{
+  "short_name": "Klarheit",
+  "name": "Klarheit - German Vocabulary Builder",
+  "description": "German vocabulary builder and spaced-repetition flashcard application",
+  "icons": [
+    {
+      "src": "/src/assets/images/app_icon_1780482510177.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/src/assets/images/app_icon_1780482510177.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#F4F4EA",
+  "theme_color": "#5A5A40",
+  "display": "standalone",
+  "orientation": "portrait"
+}

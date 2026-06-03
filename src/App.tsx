@@ -6,7 +6,7 @@ import { useVocab } from "./useVocab";
 import { AppView } from "./types";
 
 export default function App() {
-  const { words, loading, addTranslatedWords, removeWord, updateWordLevel, importWords, addPreTranslatedWords } = useVocab();
+  const { words, loading, addTranslatedWords, removeWord, clearAllWords, updateWordLevel, importWords, addPreTranslatedWords } = useVocab();
   const [view, setView] = useState<AppView>("list");
 
   return (
@@ -20,6 +20,7 @@ export default function App() {
             loading={loading}
             onAddWords={addTranslatedWords}
             onRemoveWord={removeWord}
+            onClearAllWords={clearAllWords}
             onImportWords={importWords}
             onAddPreTranslatedWords={addPreTranslatedWords}
           />

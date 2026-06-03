@@ -48,9 +48,9 @@ export function FlashcardStudy({ words, onUpdateLevel }: FlashcardStudyProps) {
       if (e.code === "Space") {
         e.preventDefault();
         setFlipped(prev => !prev);
-      } else if (e.key === "1" && flipped) {
+      } else if (e.key === "1") {
         handleResult(false);
-      } else if (e.key === "2" && flipped) {
+      } else if (e.key === "2") {
         handleResult(true);
       }
     };
@@ -159,21 +159,23 @@ export function FlashcardStudy({ words, onUpdateLevel }: FlashcardStudyProps) {
                   </div>
                 )}
 
-                {/* Noun singular and plural details */}
-                {activeWord.wordType === "noun" && activeWord.plural && (
-                  <div className="mt-2 mb-4 p-3 bg-white/10 rounded-2xl w-full text-left font-sans text-white/95 border border-white/5 flex justify-between items-center">
-                    <span className="opacity-70 uppercase tracking-wider text-[9px] font-bold">Plural suffix form</span>
-                    <span className="font-bold underline text-sm tracking-widest text-yellow-300">
-                      {activeWord.plural}
-                    </span>
-                  </div>
-                )}
+                {/* Removed noun singular and plural details */}
 
                 {activeWord.examples && activeWord.examples.length > 0 && (
-                  <div className="mt-2 pt-3 border-t border-opacity-20 border-white w-full text-white">
-                    <p className="text-xs sm:text-sm italic opacity-85 leading-relaxed max-w-xs mx-auto font-serif">
-                      "{activeWord.examples[0]}"
-                    </p>
+                  <div className="mt-2 pt-3 border-t border-opacity-20 border-white w-full text-white flex flex-col items-center">
+                    {(() => {
+                      const example = activeWord.examples[0];
+                      const parts = example.split(/ - | \u2013 | \u2014 /);
+                      if (parts.length >= 2) {
+                        return (
+                          <>
+                            <p className="text-[13px] sm:text-sm font-serif italic opacity-95 mb-1 max-w-xs leading-relaxed text-center">"{parts[0].trim()}"</p>
+                            <p className="text-[11px] sm:text-xs font-sans opacity-75 max-w-xs leading-relaxed text-center">{parts.slice(1).join(" - ").trim()}</p>
+                          </>
+                        );
+                      }
+                      return <p className="text-[13px] sm:text-sm italic opacity-85 leading-relaxed max-w-xs mx-auto font-serif text-center">"{example}"</p>;
+                    })()}
                   </div>
                 )}
 
@@ -189,16 +191,14 @@ export function FlashcardStudy({ words, onUpdateLevel }: FlashcardStudyProps) {
       <div className="w-full max-w-lg flex items-center justify-between gap-4">
         <button
           onClick={() => handleResult(false)}
-          disabled={!flipped}
-          className="flex-1 py-4 flex items-center justify-center gap-3 bg-white border border-[#E0E0D5] hover:bg-[#F9F9F4] text-[#4A4A40] rounded-full shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 py-4 flex items-center justify-center gap-3 bg-white border border-[#E0E0D5] hover:bg-[#F9F9F4] text-[#4A4A40] rounded-full shadow-sm transition-all"
         >
           <XCircle className="w-5 h-5 text-red-500" />
           <span className="text-xs font-bold uppercase tracking-widest">Need review (1)</span>
         </button>
         <button
           onClick={() => handleResult(true)}
-          disabled={!flipped}
-          className="flex-1 py-4 flex items-center justify-center gap-3 bg-[#5A5A40] text-white hover:bg-[#4A4A30] rounded-full shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 py-4 flex items-center justify-center gap-3 bg-[#5A5A40] text-white hover:bg-[#4A4A30] rounded-full shadow-sm transition-all"
         >
           <div className="bg-white rounded-full p-0.5 text-[#5A5A40]">
             <CheckCircle2 className="w-4 h-4" />
