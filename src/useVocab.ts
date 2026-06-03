@@ -42,6 +42,12 @@ export function useVocab() {
         examples: t.examples || [],
         level: 1,
         nextReview: Date.now(),
+        wordType: t.wordType,
+        plural: t.plural,
+        present: t.present,
+        preterite: t.preterite,
+        perfect: t.perfect,
+        verbClass: t.verbClass,
       }));
 
       // Prepend new words
@@ -112,5 +118,33 @@ export function useVocab() {
     });
   };
 
-  return { words, loading, addTranslatedWords, removeWord, updateWordLevel, importWords };
+  const addPreTranslatedWords = (newWords: { 
+    german: string; 
+    english: string; 
+    examples?: string[]; 
+    wordType?: "noun" | "verb" | "other"; 
+    plural?: string;
+    present?: string;
+    preterite?: string;
+    perfect?: string;
+    verbClass?: "regelmäßig" | "unregelmäßig" | "modal";
+  }[]) => {
+    const newVocab: VocabWord[] = newWords.map((t) => ({
+      id: crypto.randomUUID(),
+      german: t.german,
+      english: t.english,
+      examples: t.examples || [],
+      level: 1,
+      nextReview: Date.now(),
+      wordType: t.wordType,
+      plural: t.plural,
+      present: t.present,
+      preterite: t.preterite,
+      perfect: t.perfect,
+      verbClass: t.verbClass,
+    }));
+    saveWords([...newVocab, ...words]);
+  };
+
+  return { words, loading, addTranslatedWords, removeWord, updateWordLevel, importWords, addPreTranslatedWords };
 }

@@ -6,7 +6,7 @@ import { useVocab } from "./useVocab";
 import { AppView } from "./types";
 
 export default function App() {
-  const { words, loading, addTranslatedWords, removeWord, updateWordLevel, importWords } = useVocab();
+  const { words, loading, addTranslatedWords, removeWord, updateWordLevel, importWords, addPreTranslatedWords } = useVocab();
   const [view, setView] = useState<AppView>("list");
 
   return (
@@ -21,6 +21,7 @@ export default function App() {
             onAddWords={addTranslatedWords}
             onRemoveWord={removeWord}
             onImportWords={importWords}
+            onAddPreTranslatedWords={addPreTranslatedWords}
           />
         ) : (
           <FlashcardStudy 
