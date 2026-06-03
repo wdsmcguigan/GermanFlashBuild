@@ -1,0 +1,6 @@
+{
+  "name": "Klarheit",
+  "description": "German vocabulary builder and spaced-repetition flashcard application",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
