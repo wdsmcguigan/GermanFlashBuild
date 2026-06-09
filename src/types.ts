@@ -13,7 +13,16 @@ export interface VocabWord {
   verbClass?: "regelmäßig" | "unregelmäßig" | "modal";
 // Additional Metadata
   cefrLevel?: string;
+  theme?: string;
   lektion?: string;
 }
 
-export type AppView = "list" | "flashcards";
+export type AppView = "list" | "flashcards" | "progress";
+
+export interface AppNotification {
+  id: string;
+  type: "success" | "info" | "warning" | "error";
+  title: string;
+  message: string;
+}
+

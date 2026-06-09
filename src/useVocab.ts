@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { VocabWord } from "./types";
+import { VocabWord, AppNotification } from "./types";
 
 function generateId(): string {
   try {
@@ -162,6 +162,19 @@ function healWord(w: any): any {
 export function useVocab() {
   const [words, setWords] = useState<VocabWord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  const addNotification = (type: "success" | "info" | "warning" | "error", title: string, message: string) => {
+    const id = generateId();
+    setNotifications(prev => [...prev, { id, type, title, message }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 5000);
+  };
+
+  const removeNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem("german_vocab");
@@ -219,16 +232,18 @@ export function useVocab() {
         }));
 
       if (newVocab.length === 0) {
-        alert("All words were duplicates and already exist in your vocabulary.");
+        addNotification("warning", "Skipped Duplicates", "All words were duplicates and already exist in your vocabulary.");
       } else if (newVocab.length < data.translations.length) {
-        alert(`${data.translations.length - newVocab.length} duplicate word(s) were skipped.`);
+        addNotification("info", "Skipped Duplicates", `${data.translations.length - newVocab.length} duplicate word(s) were skipped.`);
+      } else {
+        addNotification("success", "Added Vocabulary", `Successfully added ${newVocab.length} word(s) to your deck!`);
       }
 
       // Prepend new words
       saveWords([...newVocab, ...words]);
     } catch (e) {
       console.error(e);
-      alert("Failed to translate and add words. Check your API key or network.");
+      addNotification("error", "Addition Failed", "Failed to translate and add words. Check your API key or network connection.");
     } finally {
       setLoading(false);
     }
@@ -236,6 +251,10 @@ export function useVocab() {
 
   const removeWord = (id: string) => {
     saveWords(words.filter(w => w.id !== id));
+  };
+
+  const updateWord = (id: string, updatedData: Partial<VocabWord>) => {
+    saveWords(words.map(w => w.id === id ? { ...w, ...updatedData } : w));
   };
 
   const clearAllWords = () => {
@@ -343,10 +362,10 @@ export function useVocab() {
       if (validAdditions.length > 0) {
         const nextWords = [...validAdditions, ...currentWords].map(healWord);
         localStorage.setItem("german_vocab", JSON.stringify(nextWords));
-        alert(`Successfully imported ${validAdditions.length} new words!`);
+        addNotification("success", "Import Succeeded", `Successfully imported ${validAdditions.length} new word(s)!`);
         return nextWords;
       }
-      alert("No new words found to import (all words either had missing info or already exist in your deck).");
+      addNotification("info", "Import Finished", "No new unique words found to import (all words are already in your deck).");
       return currentWords;
     });
   };
@@ -386,13 +405,29 @@ export function useVocab() {
       }));
 
     if (newVocab.length === 0) {
-      alert("All extracted words were duplicates and already exist in your vocabulary.");
+      addNotification("warning", "No New Words", "All extracted words were duplicates and already exist in your vocabulary.");
     } else if (newVocab.length < newWords.length) {
-      alert(`${newWords.length - newVocab.length} duplicate word(s) were skipped.`);
+      addNotification("info", "Skipped Duplicates", `${newWords.length - newVocab.length} duplicate word(s) were skipped.`);
+      addNotification("success", "Extracted Completed", `Successfully added ${newVocab.length} word(s) to your deck!`);
+    } else {
+      addNotification("success", "Extracted Completed", `Successfully added ${newVocab.length} word(s) to your deck!`);
     }
 
     saveWords([...newVocab, ...words]);
   };
 
-  return { words, loading, addTranslatedWords, removeWord, clearAllWords, updateWordLevel, importWords, addPreTranslatedWords };
+  return { 
+    words, 
+    loading, 
+    addTranslatedWords, 
+    removeWord,
+    updateWord,
+    clearAllWords, 
+    updateWordLevel, 
+    importWords, 
+    addPreTranslatedWords,
+    notifications,
+    addNotification,
+    removeNotification
+  };
 }

@@ -1,12 +1,15 @@
 import React, { useState, useRef } from "react";
 import { VocabWord } from "../types";
-import { Loader2, Plus, Trash2, Languages, BookOpen, Download, Upload, Camera, Check, CheckSquare, Square, X, Search, AlertTriangle, Info } from "lucide-react";
+import { Loader2, Plus, Trash2, Languages, BookOpen, Download, Upload, Camera, Check, CheckSquare, Square, X, Search, AlertTriangle, Info, Edit3, Filter, ArrowUpDown } from "lucide-react";
+import { WordFlashcardModal } from "./WordFlashcardModal";
+import { WordEditModal } from "./WordEditModal";
 
 interface VocabBuilderProps {
   words: VocabWord[];
   loading: boolean;
   onAddWords: (words: string[]) => void;
   onRemoveWord: (id: string) => void;
+  onUpdateWord: (id: string, updatedData: Partial<VocabWord>) => void;
   onClearAllWords?: () => void;
   onImportWords: (words: Partial<VocabWord>[]) => void;
   onAddPreTranslatedWords: (words: { 
@@ -20,9 +23,10 @@ interface VocabBuilderProps {
     perfect?: string;
     verbClass?: "regelmäßig" | "unregelmäßig" | "modal";
   }[]) => void;
+  onAddNotification: (type: "success" | "info" | "warning" | "error", title: string, message: string) => void;
 }
 
-function getCategoryBadgeStyles(wordType?: string) {
+export function getCategoryBadgeStyles(wordType?: string) {
   const type = (wordType || "other").trim().toLowerCase();
   
   switch (type) {
@@ -121,9 +125,13 @@ function getGermanFromImportItem(item: any): string {
   return "";
 }
 
-export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClearAllWords, onImportWords, onAddPreTranslatedWords }: VocabBuilderProps) {
+export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onUpdateWord, onClearAllWords, onImportWords, onAddPreTranslatedWords, onAddNotification }: VocabBuilderProps) {
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "az" | "za" | "cefr-asc" | "cefr-desc" | "level-asc" | "level-desc">("newest");
+  const [viewingWordId, setViewingWordId] = useState<string | null>(null);
+  const [editingWordId, setEditingWordId] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<{
     title: string;
     message: string;
@@ -134,21 +142,53 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredWords = words.filter(w => {
-    const query = searchQuery.toLowerCase().trim();
-    if (!query) return true;
-    
-    return (
-      w.german?.toLowerCase().includes(query) ||
-      w.english?.toLowerCase().includes(query) ||
-      w.wordType?.toLowerCase().includes(query) ||
-      w.plural?.toLowerCase().includes(query) ||
-      w.present?.toLowerCase().includes(query) ||
-      w.preterite?.toLowerCase().includes(query) ||
-      w.perfect?.toLowerCase().includes(query) ||
-      w.verbClass?.toLowerCase().includes(query)
-    );
-  });
+  const filteredWords = words
+    .filter(w => {
+      if (filterType !== "all" && w.wordType !== filterType) {
+        return false;
+      }
+      const query = searchQuery.toLowerCase().trim();
+      if (!query) return true;
+      
+      return (
+        w.german?.toLowerCase().includes(query) ||
+        w.english?.toLowerCase().includes(query) ||
+        w.cefrLevel?.toLowerCase().includes(query) ||
+        w.theme?.toLowerCase().includes(query) ||
+        w.wordType?.toLowerCase().includes(query) ||
+        w.plural?.toLowerCase().includes(query) ||
+        w.present?.toLowerCase().includes(query) ||
+        w.preterite?.toLowerCase().includes(query) ||
+        w.perfect?.toLowerCase().includes(query) ||
+        w.verbClass?.toLowerCase().includes(query)
+      );
+    });
+
+  if (sortBy === "oldest") {
+    filteredWords.reverse();
+  } else if (sortBy === "az") {
+    filteredWords.sort((a, b) => (a.german || "").localeCompare(b.german || ""));
+  } else if (sortBy === "za") {
+    filteredWords.sort((a, b) => (b.german || "").localeCompare(a.german || ""));
+  } else if (sortBy === "cefr-asc") {
+    filteredWords.sort((a, b) => {
+      if (!a.cefrLevel && !b.cefrLevel) return 0;
+      if (!a.cefrLevel) return 1;
+      if (!b.cefrLevel) return -1;
+      return a.cefrLevel.localeCompare(b.cefrLevel);
+    });
+  } else if (sortBy === "cefr-desc") {
+    filteredWords.sort((a, b) => {
+      if (!a.cefrLevel && !b.cefrLevel) return 0;
+      if (!a.cefrLevel) return 1;
+      if (!b.cefrLevel) return -1;
+      return b.cefrLevel.localeCompare(a.cefrLevel);
+    });
+  } else if (sortBy === "level-asc") {
+    filteredWords.sort((a, b) => a.level - b.level);
+  } else if (sortBy === "level-desc") {
+    filteredWords.sort((a, b) => b.level - a.level);
+  }
 
   const [extracting, setExtracting] = useState(false);
   const [importProgress, setImportProgress] = useState<{current: number, total: number} | null>(null);
@@ -352,12 +392,15 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
     URL.revokeObjectURL(url);
   };
 
-  const processExternalImport = async (wordsToImport: any[]) => {
+  const processExternalImport = async (wordsToImport: any[], alreadyCompletePrefix: any[] = []) => {
     importCancelledRef.current = false;
     setIsImportCancelling(false);
     setImportProgress({ current: 0, total: wordsToImport.length });
     setErrorDetails(null);
     let importedCount = 0;
+    
+    // Accumulate enriched words locally
+    const enrichedAccumulatedList: any[] = [];
     
     // Using a safe, highly-stable chunk size (12 instead of 40)
     // to prevent response truncation or backend timeout on large tasks.
@@ -377,15 +420,15 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
         });
         
         if (!response.ok) {
-           let errorData: any = {};
-           try {
-             errorData = await response.json();
-           } catch (_) {}
-           throw {
-             category: errorData.category || "unknown",
-             message: errorData.error || "Failed to process import chunk.",
-             details: errorData.details || `HTTP Status: ${response.status}`
-           };
+            let errorData: any = {};
+            try {
+              errorData = await response.json();
+            } catch (_) {}
+            throw {
+              category: errorData.category || "unknown",
+              message: errorData.error || "Failed to process import chunk.",
+              details: errorData.details || `HTTP Status: ${response.status}`
+            };
         }
         
         const data = await response.json();
@@ -395,7 +438,7 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
         }
 
         if (data.enrichedWords && Array.isArray(data.enrichedWords)) {
-          onImportWords(data.enrichedWords);
+          enrichedAccumulatedList.push(...data.enrichedWords);
         }
       } catch (err: any) {
         console.error("Import Error Handled:", err);
@@ -446,6 +489,11 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
       setImportProgress({ current: Math.min(importedCount, wordsToImport.length), total: wordsToImport.length });
     }
     
+    // Conclude the import once with combined values
+    if (enrichedAccumulatedList.length > 0 || alreadyCompletePrefix.length > 0) {
+      onImportWords([...alreadyCompletePrefix, ...enrichedAccumulatedList]);
+    }
+    
     setImportProgress(null);
     setIsImportCancelling(false);
   };
@@ -469,13 +517,57 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
             rawItems = parsed.words;
           } else if (Array.isArray(parsed)) {
             rawItems = parsed;
+          } else {
+            // Check if it is a flat dictionary of { "GermanWord": "EnglishWord" }
+            const entries = Object.entries(parsed);
+            if (entries.length > 0 && entries.every(([k, v]) => typeof k === "string" && (typeof v === "string" || typeof v === "object"))) {
+              rawItems = entries.map(([k, v]) => {
+                if (v && typeof v === "object") {
+                  return { german: k, ...v };
+                }
+                return { german: k, english: String(v) };
+              });
+            }
           }
         }
         
         if (!Array.isArray(rawItems) || rawItems.length === 0) {
-          alert("No words found to import.");
+          onAddNotification("warning", "Empty File", "No vocabulary words found inside the selected JSON file.");
           return;
         }
+
+        // Standardize raw items with fallback fields
+        const standardizedItems = rawItems.map((w: any) => {
+          if (!w) return null;
+          if (typeof w === "string") {
+            return { german: w, english: "" };
+          }
+          if (typeof w === "object") {
+            const german = w.german || w.word || w.vocab || w.text || w.de || w.German || w.Vocab || "";
+            const english = w.english || w.translation || w.translationen || w.meaning || w.en || w.English || w.Translation || "";
+            return {
+              ...w,
+              german: typeof german === "string" ? german : String(german),
+              english: typeof english === "string" ? english : String(english)
+            };
+          }
+          return null;
+        }).filter(item => item !== null && item.german.trim() !== "");
+
+        if (standardizedItems.length === 0) {
+          onAddNotification("warning", "No Words Match", "None of the objects inside the file could be parsed as German words.");
+          return;
+        }
+
+        // De-duplicate imported items among themselves first!
+        const uniqueImportedMap = new Map<string, any>();
+        standardizedItems.forEach((w: any) => {
+          const norm = getNormalizedGerman(w.german);
+          if (norm && !uniqueImportedMap.has(norm)) {
+            uniqueImportedMap.set(norm, w);
+          }
+        });
+        const deDuplicatedRawItems = Array.from(uniqueImportedMap.values());
 
         const existingNormalized = new Set(
           (Array.isArray(words) ? words : [])
@@ -483,24 +575,23 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
             .map((w: any) => getNormalizedGerman(w.german))
         );
 
-        const filteredItems = rawItems.filter((w: any) => {
-          const germanWord = getGermanFromImportItem(w);
-          const normalized = getNormalizedGerman(germanWord);
+        const filteredItems = deDuplicatedRawItems.filter((w: any) => {
+          const normalized = getNormalizedGerman(w.german);
           return normalized && !existingNormalized.has(normalized);
         });
 
-        const skippedCount = rawItems.length - filteredItems.length;
+        const skippedCount = deDuplicatedRawItems.length - filteredItems.length;
 
         if (filteredItems.length === 0) {
-          alert(`Smart-Resume: All ${rawItems.length} word(s) inside this file already exist in your vocabulary. Perfect!`);
+          onAddNotification("info", "Smart-Resume Tracker", `Smart-Resume: All ${deDuplicatedRawItems.length} word(s) inside this file are already in your vocabulary list.`);
           return;
         }
 
         if (skippedCount > 0) {
-          alert(`Smart-Resume: Detected ${skippedCount} word(s) from this file that are already in your vocabulary list. Skipping them and processing the remaining ${filteredItems.length} new or remaining word(s)...`);
+          onAddNotification("info", "Skipped Duplicates", `Smart-Resume: Skipping ${skippedCount} duplicate word(s) that already exist in your deck.`);
         }
 
-        // Internal Format check: Should have 'german' and 'english' properties on objects.
+        // Avoid crashes inside iframe sandbox by utilizing onAddNotification instead of alerts
         const isInternalFormat = filteredItems[0] && typeof filteredItems[0] === "object" && filteredItems[0].german && filteredItems[0].english;
 
         if (isInternalFormat) {
@@ -553,11 +644,8 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
           });
 
           if (incompleteWords.length > 0) {
-            if (completeWords.length > 0) {
-              onImportWords(completeWords);
-            }
-            alert(`Detected ${incompleteWords.length} imported word(s) with incomplete grammatical metadata (such as verbs missing Perfekt tenses/helper verbs or nouns missing plurals). Running AI enrichment to complete them automatically...`);
-            processExternalImport(incompleteWords);
+            onAddNotification("info", "Enrichment Initiated", `Detected ${incompleteWords.length} words with incomplete grammatical metadata. Starting automatic AI metadata completion...`);
+            processExternalImport(incompleteWords, completeWords);
           } else {
             onImportWords(filteredItems);
           }
@@ -567,7 +655,7 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
         processExternalImport(filteredItems);
       } catch (err: any) {
         console.error("FileReader onload error details:", err);
-        alert(`Failed to parse the JSON file: ${err.message || String(err)}`);
+        onAddNotification("error", "Parse Failed", `Failed to parse the JSON file: ${err.message || String(err)}`);
       }
     };
     reader.readAsText(file);
@@ -652,7 +740,7 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
 
       {/* Right Column: List */}
       <section className="flex-1 min-h-[200px] lg:min-h-0 flex flex-col bg-white rounded-2xl lg:rounded-[32px] shadow-sm border border-[#E0E0D5] overflow-hidden shrink-0">
-        <div className="px-4 py-3 lg:px-8 lg:py-6 border-b border-[#F5F5F0] flex justify-between items-center">
+        <div className="px-3 py-2 lg:px-6 lg:py-4 border-b border-[#F5F5F0] flex justify-between items-center">
           <h2 className="text-xs uppercase tracking-tighter font-bold text-[#8E8E80]">Your List</h2>
           <div className="flex items-center gap-1.5 lg:gap-3">
             <input type="file" ref={fileInputRef} accept=".json" onChange={handleImportChange} className="hidden" />
@@ -709,7 +797,7 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
 
         {/* Search Input Bar */}
         {words.length > 0 && (
-          <div className="px-4 py-2 lg:px-6 lg:py-3 bg-[#FDFDFB] border-b border-[#F5F5F0] flex items-center gap-2">
+          <div className="px-3 py-1.5 lg:px-4 lg:py-2 bg-[#FDFDFB] border-b border-[#F5F5F0] flex items-center gap-2">
             <Search className="w-4 h-4 text-[#8E8E80] shrink-0" />
             <input
               type="text"
@@ -727,10 +815,60 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+
+            <div className="flex items-center gap-1 border-l border-[#E0E0D5] pl-1.5 ml-1 shrink-0">
+              {/* Filter Icon Button with Hidden Native Select overlay */}
+              <div 
+                className="relative p-1.5 text-[#8E8E80] hover:text-[#5A5A40] hover:bg-[#F5F5F0] rounded-lg transition-colors cursor-pointer inline-flex items-center justify-center border border-transparent hover:border-[#E0E0D5]/60"
+                title={`Filter Type: ${filterType}`}
+              >
+                <Filter className="w-4 h-4" />
+                {filterType !== "all" && (
+                  <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#5A5A40] rounded-full" />
+                )}
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                >
+                  <option value="all">Any Type</option>
+                  <option value="noun">Noun</option>
+                  <option value="verb">Verb</option>
+                  <option value="adjective">Adjective</option>
+                  <option value="adverb">Adverb</option>
+                  <option value="preposition">Preposition</option>
+                  <option value="conjunction">Conjunction</option>
+                  <option value="pronoun">Pronoun</option>
+                  <option value="phrase">Phrase</option>
+                </select>
+              </div>
+
+              {/* Sort Icon Button with Hidden Native Select overlay */}
+              <div 
+                className="relative p-1.5 text-[#8E8E80] hover:text-[#5A5A40] hover:bg-[#F5F5F0] rounded-lg transition-colors cursor-pointer inline-flex items-center justify-center border border-transparent hover:border-[#E0E0D5]/60"
+                title={`Sort: ${sortBy}`}
+              >
+                <ArrowUpDown className="w-4 h-4" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                >
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="az">A-Z</option>
+                  <option value="za">Z-A</option>
+                  <option value="level-desc">Mastery (Highest)</option>
+                  <option value="level-asc">Mastery (Lowest)</option>
+                  <option value="cefr-asc">CEFR (Asc)</option>
+                  <option value="cefr-desc">CEFR (Desc)</option>
+                </select>
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-2 py-4 space-y-1 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-1.5 py-2 space-y-0.5 custom-scrollbar">
           {words.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-[#E0E0D5]">
               <BookOpen className="w-8 h-8 mb-3 opacity-20" />
@@ -742,13 +880,41 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
               <p className="text-sm font-serif italic" style={{ fontFamily: "'Georgia', serif" }}>No matching words found.</p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {filteredWords.map(w => {
                 const badge = getCategoryBadgeStyles(w.wordType);
                 return (
-                  <div key={w.id} className="flex items-center px-4 py-3 lg:px-6 lg:py-4 hover:bg-[#F9F9F4] rounded-xl lg:rounded-2xl transition-colors group animate-fade-in">
+                  <div 
+                    key={w.id} 
+                    onClick={() => setViewingWordId(w.id)}
+                    className="flex items-center px-1.5 py-1.5 lg:px-3 lg:py-2.5 hover:bg-[#F9F9F4] rounded-lg lg:rounded-xl transition-colors group animate-fade-in cursor-pointer"
+                  >
                     <div className="flex flex-col min-w-0 pr-2">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {/* Mastery Indicator */}
+                        <div className="relative flex items-center justify-center opacity-40 shrink-0" title={`Mastery: ${w.level || 1}/5`}>
+                          <svg viewBox="0 0 12 12" height="12" width="12" className="-rotate-90">
+                            <circle
+                              stroke="#E0E0D5"
+                              fill="transparent"
+                              strokeWidth="2"
+                              r="5"
+                              cx="6"
+                              cy="6"
+                            />
+                            <circle
+                              stroke={(w.level || 1) >= 5 ? "#22c55e" : "#5A5A40"}
+                              fill="transparent"
+                              strokeWidth="2"
+                              strokeDasharray={`${2 * Math.PI * 5}`}
+                              style={{ strokeDashoffset: `${2 * Math.PI * 5 * (1 - ((w.level || 1) / 5))}` }}
+                              strokeLinecap="round"
+                              r="5"
+                              cx="6"
+                              cy="6"
+                            />
+                          </svg>
+                        </div>
                         <span className="text-base lg:text-lg font-serif text-[#2A2A20]" style={{ fontFamily: "'Georgia', serif" }}>
                           {w.wordType === "noun" && w.plural && !w.plural.toLowerCase().includes("no plural")
                             ? `${w.german}, ${w.plural}`
@@ -759,6 +925,11 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
                             {badge.label}
                           </span>
                         )}
+                        {(w.cefrLevel || w.theme) && (
+                          <span className="text-[10px] text-[#8E8E80] opacity-80 font-medium ml-1">
+                            {w.cefrLevel ? w.cefrLevel : ""}{w.cefrLevel && w.theme ? " - " : ""}{w.theme ? w.theme : ""}
+                          </span>
+                        )}
                       </div>
                       {w.wordType === "verb" && (w.present || w.preterite || w.perfect) && (
                         <span className="text-[10px] text-[#8E8E80] font-mono mt-0.5 truncate">
@@ -766,11 +937,19 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
                         </span>
                       )}
                     </div>
-                    <div className="ml-auto flex items-center gap-3 lg:gap-4 shrink-0">
+                    <div className="ml-auto flex items-center gap-2 lg:gap-3 shrink-0">
                       <span className="text-[10px] text-[#8E8E80] opacity-80 uppercase font-medium max-w-[120px] truncate">{w.english}</span>
                       <button
-                        onClick={() => onRemoveWord(w.id)}
-                        className="text-[#8E8E80] opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity hover:text-[#5A5A40]"
+                        onClick={(e) => { e.stopPropagation(); setEditingWordId(w.id); }}
+                        className="hidden md:block p-1 text-[#8E8E80] lg:opacity-0 group-hover:opacity-100 transition-opacity hover:text-[#5A5A40] hover:bg-white rounded"
+                        title="Edit Word"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemoveWord(w.id); }}
+                        className="p-1 text-[#8E8E80] opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500 hover:bg-red-50 rounded"
+                        title="Delete Word"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1131,6 +1310,30 @@ export function VocabBuilder({ words, loading, onAddWords, onRemoveWord, onClear
           </div>
         </div>
       )}
+
+      {viewingWordId && (
+        <WordFlashcardModal
+          word={words.find(w => w.id === viewingWordId)!}
+          onClose={() => setViewingWordId(null)}
+          onMastered={(id) => {
+             onUpdateWord(id, { level: 5, nextReview: Date.now() + 60 * 60 * 1000 * 24 * 30 });
+          }}
+          onEdit={() => {
+             setEditingWordId(viewingWordId);
+             setViewingWordId(null);
+          }}
+        />
+      )}
+
+      {editingWordId && (
+        <WordEditModal 
+          word={words.find(w => w.id === editingWordId)!} 
+          onClose={() => setEditingWordId(null)}
+          onSave={(id, data) => onUpdateWord(id, data)}
+          onDelete={(id) => { onRemoveWord(id); setEditingWordId(null); }}
+        />
+      )}
+
     </div>
   );
 }

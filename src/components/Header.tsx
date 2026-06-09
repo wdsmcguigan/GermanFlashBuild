@@ -22,15 +22,21 @@ export function Header({ view, setView, wordCount }: HeaderProps) {
       <nav className="flex gap-4 sm:gap-8 text-xs sm:text-sm font-medium uppercase tracking-widest w-full sm:w-auto justify-center sm:justify-start">
         <button
           onClick={() => setView("list")}
-          className={`transition-opacity ${view === "list" ? "text-[#5A5A40] border-b-2 border-[#5A5A40] pb-1" : "text-[#5A5A40] opacity-50 hover:opacity-100"}`}
+          className={`transition-opacity cursor-pointer ${view === "list" ? "text-[#5A5A40] border-b-2 border-[#5A5A40] pb-1 font-bold" : "text-[#5A5A40] opacity-50 hover:opacity-100"}`}
         >
           Vocabulary List
         </button>
         <button
           onClick={() => setView("flashcards")}
-          className={`transition-opacity ${view === "flashcards" ? "text-[#5A5A40] border-b-2 border-[#5A5A40] pb-1" : "text-[#5A5A40] opacity-50 hover:opacity-100"}`}
+          className={`transition-opacity cursor-pointer ${view === "flashcards" ? "text-[#5A5A40] border-b-2 border-[#5A5A40] pb-1 font-bold" : "text-[#5A5A40] opacity-50 hover:opacity-100"}`}
         >
           Flashcards
+        </button>
+        <button
+          onClick={() => setView("progress")}
+          className={`transition-opacity cursor-pointer ${view === "progress" ? "text-[#5A5A40] border-b-2 border-[#5A5A40] pb-1 font-bold" : "text-[#5A5A40] opacity-50 hover:opacity-100"}`}
+        >
+          Progress
         </button>
       </nav>
       <div className="hidden sm:flex items-center gap-3 bg-white px-4 py-2 rounded-full border border-[#E0E0D5] shadow-sm text-xs font-semibold uppercase tracking-wider text-[#5A5A40]">
