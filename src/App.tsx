@@ -24,10 +24,38 @@ export default function App() {
     removeNotification
   } = useVocab();
   const [view, setView] = useState<AppView>("list");
+  const [studyFilter, setStudyFilter] = useState<"all" | "new" | "learning" | "mastered">("all");
+
+  const filteredWords = React.useMemo(() => {
+    if (studyFilter === "new") {
+      return words.filter((w) => {
+        const lvl = w.level || 1;
+        return lvl <= 1;
+      });
+    }
+    if (studyFilter === "learning") {
+      return words.filter((w) => {
+        const lvl = w.level || 1;
+        return lvl > 1 && lvl < 5;
+      });
+    }
+    if (studyFilter === "mastered") {
+      return words.filter((w) => {
+        const lvl = w.level || 1;
+        return lvl >= 5;
+      });
+    }
+    return words;
+  }, [words, studyFilter]);
+
+  const handleSetView = (newView: AppView) => {
+    setView(newView);
+    setStudyFilter("all");
+  };
 
   return (
     <div className="h-[100dvh] bg-[#F5F5F0] flex flex-col text-[#4A4A40] overflow-hidden relative" style={{ fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-      <Header view={view} setView={setView} wordCount={words.length} />
+      <Header view={view} setView={handleSetView} wordCount={words.length} />
       
       <main className="flex flex-col flex-1 min-h-0 overflow-y-auto lg:overflow-hidden p-4 lg:p-8">
         {view === "list" ? (
@@ -44,13 +72,21 @@ export default function App() {
           />
         ) : view === "flashcards" ? (
           <FlashcardStudy 
-            words={words}
+            words={filteredWords}
             onUpdateLevel={updateWordLevel}
             onUpdateWord={updateWord}
             onRemoveWord={removeWord}
+            studyFilter={studyFilter}
+            onClearFilter={() => setStudyFilter("all")}
           />
         ) : (
-          <ProgressDashboard words={words} />
+          <ProgressDashboard 
+            words={words} 
+            onStartTest={(category) => {
+              setStudyFilter(category);
+              setView("flashcards");
+            }}
+          />
         )}
       </main>
 

@@ -9,9 +9,11 @@ interface FlashcardStudyProps {
   onUpdateLevel: (id: string, knewIt: boolean) => void;
   onUpdateWord: (id: string, data: Partial<VocabWord>) => void;
   onRemoveWord: (id: string) => void;
+  studyFilter?: "all" | "new" | "learning" | "mastered";
+  onClearFilter?: () => void;
 }
 
-export function FlashcardStudy({ words, onUpdateLevel, onUpdateWord, onRemoveWord }: FlashcardStudyProps) {
+export function FlashcardStudy({ words, onUpdateLevel, onUpdateWord, onRemoveWord, studyFilter = "all", onClearFilter }: FlashcardStudyProps) {
   const [flipped, setFlipped] = useState(false);
   const [overrideIndex, setOverrideIndex] = useState(0);
   const [editingWordId, setEditingWordId] = useState<string | null>(null);
@@ -104,6 +106,26 @@ export function FlashcardStudy({ words, onUpdateLevel, onUpdateWord, onRemoveWor
   }, [flipped, activeWord, sortedWords.length, editingWordId]);
 
   if (words.length === 0) {
+    if (studyFilter && studyFilter !== "all") {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center w-full">
+          <div className="w-16 h-16 bg-[#F9F9F4] rounded-2xl flex items-center justify-center text-[#5A5A40] mb-4 border border-[#E0E0D5]">
+            <XCircle className="w-8 h-8 text-neutral-400" />
+          </div>
+          <h2 className="text-xl font-serif text-[#2A2A20]" style={{ fontFamily: "Georgia, serif" }}>No words in category</h2>
+          <p className="text-[#8E8E80] mt-2 max-w-sm mx-auto">You don't have any words marked as "{studyFilter}" yet.</p>
+          {onClearFilter && (
+            <button
+              onClick={onClearFilter}
+              className="mt-6 px-5 py-2.5 bg-[#5A5A40] hover:bg-[#4A4A30] text-white text-xs font-bold uppercase tracking-widest rounded-full transition-all cursor-pointer shadow-sm"
+            >
+              Study All Words
+            </button>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center w-full">
         <div className="w-16 h-16 bg-[#F9F9F4] rounded-2xl flex items-center justify-center text-[#5A5A40] mb-4 border border-[#E0E0D5]">
@@ -120,6 +142,28 @@ export function FlashcardStudy({ words, onUpdateLevel, onUpdateWord, onRemoveWor
   return (
     <div className="flex-1 flex flex-col items-center justify-center py-4 w-full h-full lg:min-h-0 min-h-[400px]">
       
+      {studyFilter && studyFilter !== "all" && (
+        <div className="w-full max-w-lg mb-5 bg-white border border-[#E0E0D5] px-4 py-3 rounded-2xl flex items-center justify-between text-xs shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${
+              studyFilter === "learning" ? "bg-amber-400" :
+              studyFilter === "mastered" ? "bg-green-500" : "bg-blue-500"
+            }`}></span>
+            <span className="text-[#4A4A40] font-medium">
+              Studying <span className="font-bold capitalize">{studyFilter === "new" ? "new words" : studyFilter}</span> subset ({words.length} {words.length === 1 ? 'word' : 'words'})
+            </span>
+          </div>
+          {onClearFilter && (
+            <button
+              onClick={onClearFilter}
+              className="text-[10px] uppercase tracking-wider font-bold text-[#5A5A40] hover:text-[#2A2A20] px-3 py-1.5 rounded-lg bg-[#F5F5F0] hover:bg-[#EAEAE0] transition-colors cursor-pointer"
+            >
+              Study All
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="w-full max-w-lg mb-6 lg:mb-8 lg:mt-0" style={{ perspective: "1000px" }}>
         <div className="flex justify-center items-center gap-3 mb-4 text-[10px] uppercase tracking-widest text-[#8E8E80] font-bold">
           <span className="flex items-center gap-1.5">

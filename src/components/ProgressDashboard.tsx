@@ -1,13 +1,14 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { VocabWord } from "../types";
-import { Award, BookOpen, GraduationCap, TrendingUp, CheckSquare, Layers, HelpCircle, CheckCircle, X } from "lucide-react";
+import { Award, BookOpen, GraduationCap, TrendingUp, CheckSquare, Layers, HelpCircle, CheckCircle, X, Play } from "lucide-react";
 import { getCategoryBadgeStyles } from "./VocabBuilder";
 
 interface ProgressDashboardProps {
   words: VocabWord[];
+  onStartTest: (category: "all" | "new" | "learning" | "mastered") => void;
 }
 
-export function ProgressDashboard({ words }: ProgressDashboardProps) {
+export function ProgressDashboard({ words, onStartTest }: ProgressDashboardProps) {
   const [expandedCategory, setExpandedCategory] = useState<"New" | "Learning" | "Mastered" | null>(null);
 
   useEffect(() => {
@@ -157,7 +158,7 @@ export function ProgressDashboard({ words }: ProgressDashboardProps) {
       {/* Grid of Dashboard Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Total Deck Size */}
-        <div className="bg-white border border-[#E0E0D5] rounded-3xl p-5 shadow-sm flex items-center gap-4">
+        <div className="relative bg-white border border-[#E0E0D5] rounded-3xl p-5 shadow-sm flex items-center gap-4">
           <div className="w-12 h-12 bg-[#F5F5F0] rounded-2xl flex items-center justify-center text-[#5A5A40] shrink-0">
             <BookOpen className="w-6 h-6" />
           </div>
@@ -166,12 +167,25 @@ export function ProgressDashboard({ words }: ProgressDashboardProps) {
             <span className="text-2xl font-serif font-bold text-[#2A2A20]" style={{ fontFamily: "Georgia, serif" }}>{totalCount}</span>
             <span className="text-[10px] text-[#8E8E80] block mt-0.5">words practicing</span>
           </div>
+          {totalCount > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartTest("all");
+              }}
+              className="absolute top-4 right-4 px-2.5 py-1 bg-[#5A5A40]/10 hover:bg-[#5A5A40] hover:text-white text-[#5A5A40] text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all flex items-center gap-1 border border-[#5A5A40]/20 shadow-sm"
+              title="Test all words"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>Test</span>
+            </button>
+          )}
         </div>
 
         {/* New Ratio */}
         <div 
           onClick={(e) => { e.stopPropagation(); setExpandedCategory(expandedCategory === "New" ? null : "New"); }}
-          className={`metric-button border rounded-3xl p-5 shadow-sm flex items-center gap-4 cursor-pointer transition-colors ${expandedCategory === "New" ? "bg-[#F9F9F4] border-[#D0D0C5]" : "bg-white border-[#E0E0D5] hover:border-[#D0D0C5] hover:bg-[#F9F9F4]"}`}
+          className={`relative metric-button border rounded-3xl p-5 shadow-sm flex items-center gap-4 cursor-pointer transition-colors ${expandedCategory === "New" ? "bg-[#F9F9F4] border-[#D0D0C5]" : "bg-white border-[#E0E0D5] hover:border-[#D0D0C5] hover:bg-[#F9F9F4]"}`}
         >
           <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-600 shrink-0 pointer-events-none">
             <Layers className="w-6 h-6" />
@@ -181,12 +195,25 @@ export function ProgressDashboard({ words }: ProgressDashboardProps) {
             <span className="text-2xl font-serif font-bold text-blue-600" style={{ fontFamily: "Georgia, serif" }}>{stats.newCount}</span>
             <span className="text-[10px] text-[#8E8E80] block mt-0.5">{stats.newRate}% of whole deck</span>
           </div>
+          {stats.newCount > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartTest("new");
+              }}
+              className="absolute top-4 right-4 px-2.5 py-1 bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all flex items-center gap-1 border border-blue-500/20 shadow-sm"
+              title="Test New words"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>Test</span>
+            </button>
+          )}
         </div>
 
         {/* Learning */}
         <div 
           onClick={(e) => { e.stopPropagation(); setExpandedCategory(expandedCategory === "Learning" ? null : "Learning"); }}
-          className={`metric-button border rounded-3xl p-5 shadow-sm flex items-center gap-4 cursor-pointer transition-colors ${expandedCategory === "Learning" ? "bg-[#F9F9F4] border-[#D0D0C5]" : "bg-white border-[#E0E0D5] hover:border-[#D0D0C5] hover:bg-[#F9F9F4]"}`}
+          className={`relative metric-button border rounded-3xl p-5 shadow-sm flex items-center gap-4 cursor-pointer transition-colors ${expandedCategory === "Learning" ? "bg-[#F9F9F4] border-[#D0D0C5]" : "bg-white border-[#E0E0D5] hover:border-[#D0D0C5] hover:bg-[#F9F9F4]"}`}
         >
           <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-600 shrink-0 pointer-events-none">
             <GraduationCap className="w-6 h-6" />
@@ -196,12 +223,25 @@ export function ProgressDashboard({ words }: ProgressDashboardProps) {
             <span className="text-2xl font-serif font-bold text-amber-600" style={{ fontFamily: "Georgia, serif" }}>{stats.learningCount}</span>
             <span className="text-[10px] text-[#8E8E80] block mt-0.5">{stats.learningRate}% in active rotation</span>
           </div>
+          {stats.learningCount > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartTest("learning");
+              }}
+              className="absolute top-4 right-4 px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500 hover:text-white text-amber-700 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all flex items-center gap-1 border border-amber-500/20 shadow-sm"
+              title="Test Learning words"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>Test</span>
+            </button>
+          )}
         </div>
 
         {/* Mastered */}
         <div 
           onClick={(e) => { e.stopPropagation(); setExpandedCategory(expandedCategory === "Mastered" ? null : "Mastered"); }}
-          className={`metric-button border rounded-3xl p-5 shadow-sm flex items-center gap-4 cursor-pointer transition-colors ${expandedCategory === "Mastered" ? "bg-[#F9F9F4] border-[#D0D0C5]" : "bg-white border-[#E0E0D5] hover:border-[#D0D0C5] hover:bg-[#F9F9F4]"}`}
+          className={`relative metric-button border rounded-3xl p-5 shadow-sm flex items-center gap-4 cursor-pointer transition-colors ${expandedCategory === "Mastered" ? "bg-[#F9F9F4] border-[#D0D0C5]" : "bg-white border-[#E0E0D5] hover:border-[#D0D0C5] hover:bg-[#F9F9F4]"}`}
         >
           <div className="w-12 h-12 bg-green-500/10 rounded-2xl flex items-center justify-center text-green-700 shrink-0 pointer-events-none">
             <Award className="w-6 h-6" />
@@ -211,6 +251,19 @@ export function ProgressDashboard({ words }: ProgressDashboardProps) {
             <span className="text-2xl font-serif font-bold text-green-700" style={{ fontFamily: "Georgia, serif" }}>{stats.masteredCount}</span>
             <span className="text-[10px] text-[#8E8E80] block mt-0.5">{stats.masteryRate}% at top durability</span>
           </div>
+          {stats.masteredCount > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartTest("mastered");
+              }}
+              className="absolute top-4 right-4 px-2.5 py-1 bg-green-500/10 hover:bg-green-700 hover:text-white text-green-700 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all flex items-center gap-1 border border-green-500/20 shadow-sm"
+              title="Test Mastered words"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>Test</span>
+            </button>
+          )}
         </div>
       </div>
 
