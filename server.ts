@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as dotenv from "dotenv";
+import { fetchHints } from "./hintProviders";
 
 dotenv.config();
 
@@ -113,6 +114,29 @@ async function startServer() {
   });
 
   // API routes FIRST
+  app.post("/api/word-hints", async (req, res) => {
+    try {
+      const { german } = req.body;
+
+      if (!german) {
+        return res.status(400).json({ error: "No word provided" });
+      }
+
+      // Free dictionary lookups — no AI involved. Phrases skip the network
+      // entirely; one source failing alone is tolerated inside fetchHints.
+      const { synonyms, antonyms } = await fetchHints(german);
+
+      res.json({ synonyms, antonyms });
+    } catch (error: any) {
+      console.error("Word hints ERROR:", error);
+      res.status(502).json({
+        error: "Couldn't reach the dictionary services (OpenThesaurus / Wiktionary). Check your connection and try again.",
+        details: error?.message || String(error),
+        category: "network",
+      });
+    }
+  });
+
   app.post("/api/translate", async (req, res) => {
     try {
       const { words } = req.body;

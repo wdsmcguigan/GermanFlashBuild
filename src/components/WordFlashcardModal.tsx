@@ -1,15 +1,16 @@
 import React, { useState } from "react";
 import { VocabWord } from "../types";
-import { X, CheckCircle2, Edit3 } from "lucide-react";
+import { X, CheckCircle2, Edit3, Pin } from "lucide-react";
 
 interface WordFlashcardModalProps {
   word: VocabWord;
   onClose: () => void;
   onMastered: (id: string) => void;
   onEdit: () => void;
+  onUpdateWord?: (id: string, updates: Partial<VocabWord>) => void;
 }
 
-export function WordFlashcardModal({ word, onClose, onMastered, onEdit }: WordFlashcardModalProps) {
+export function WordFlashcardModal({ word, onClose, onMastered, onEdit, onUpdateWord }: WordFlashcardModalProps) {
   const [flipped, setFlipped] = useState(false);
 
   const cleanConjugation = (val: string | undefined | null) => {
@@ -62,6 +63,22 @@ export function WordFlashcardModal({ word, onClose, onMastered, onEdit }: WordFl
 
             <div className="absolute top-0 left-0 w-full h-1.5 flex bg-[#F9F9F4] z-10 pointer-events-none">
                 <div className="h-full bg-green-500" style={{ width: `${(word.level / 5) * 100}%` }} />
+            </div>
+
+            {/* Bottom Action Actions */}
+            <div className="absolute bottom-4 left-4 flex justify-between items-center pointer-events-none z-20">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onUpdateWord) {
+                    onUpdateWord(word.id, { pinned: !word.pinned });
+                  }
+                }}
+                title={word.pinned ? "Unpin word" : "Pin word"}
+                className={`pointer-events-auto p-2 rounded-full transition-colors cursor-pointer ${word.pinned ? "text-pink-500 bg-pink-500/10 hover:bg-pink-500/20" : flipped ? "text-white/40 hover:text-white/80 hover:bg-white/10" : "text-[#8E8E80] hover:text-[#5A5A40] hover:bg-black/5"}`}
+              >
+                <Pin className={`w-4 h-4 ${word.pinned ? "fill-current" : ""}`} />
+              </button>
             </div>
 
           {!flipped ? (
